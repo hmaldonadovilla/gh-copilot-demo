@@ -1,9 +1,5 @@
 var builder = WebApplication.CreateBuilder(args);
 
-var DefaultHttpPort = Environment.GetEnvironmentVariable("DAPR_HTTP_PORT") ?? "3500";
-var AlbumStateStore = "statestore";
-var CollectionId = Environment.GetEnvironmentVariable("COLLECTION_ID") ?? "GreatestHits";
-
 // Add services to the container.
 
 builder.Services.AddControllers();
@@ -12,12 +8,15 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
 
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:3001" };
+
 builder.Services.AddCors(options => {
-    options.AddDefaultPolicy(builder =>
+    options.AddDefaultPolicy(policy =>
     {
-        builder.AllowAnyOrigin();
-        builder.AllowAnyHeader();
-        builder.AllowAnyMethod();
+        policy.WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
 
@@ -31,6 +30,8 @@ if (app.Environment.IsDevelopment())
 }
 
 
+app.UseRouting();
+
 app.UseCors();
 
 // app.Urls.Add("${ASPNETCORE_URLS}");
@@ -38,8 +39,6 @@ app.UseCors();
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
-
-app.UseRouting();
 
 app.MapGet("/", async context =>
 {

@@ -1,58 +1,111 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.AspNetCore.Mvc;
 using System.Data;
-using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 
-namespace UnsecureApp.Controllers
+namespace albums_api.Controllers
 {
-    public class MyController
+    [ApiController]
+    [Route("api/[controller]")]
+    public class UnsecuredController : ControllerBase
     {
+        private readonly string _connectionString;
+        private readonly string _allowedBasePath;
+        private readonly ILogger<UnsecuredController> _logger;
 
-        public string ReadFile(string userInput)
+        public UnsecuredController(IConfiguration configuration, IWebHostEnvironment hostEnvironment, ILogger<UnsecuredController> logger)
         {
-            using (FileStream fs = File.Open(userInput, FileMode.Open))
-            {
-                byte[] b = new byte[1024];
-                UTF8Encoding temp = new UTF8Encoding(true);
-
-                while (fs.Read(b, 0, b.Length) > 0)
-                {
-                    return temp.GetString(b);
-                }
-            }
-
-            return null;
+            _connectionString = configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+            var configuredBasePath = configuration["FileAccess:BasePath"];
+            var basePath = string.IsNullOrWhiteSpace(configuredBasePath)
+                ? hostEnvironment.ContentRootPath
+                : Path.Combine(hostEnvironment.ContentRootPath, configuredBasePath);
+            _allowedBasePath = Path.GetFullPath(basePath);
+            _logger = logger;
         }
 
-        public int GetProduct(string productName)
+        [HttpGet("health")]
+        public ActionResult<string> Health()
         {
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                SqlCommand sqlCommand = new SqlCommand()
-                {
-                    CommandText = "SELECT ProductId FROM Products WHERE ProductName = '" + productName + "'",
-                    CommandType = CommandType.Text,
-                };
-
-                SqlDataReader reader = sqlCommand.ExecuteReader();
-                return reader.GetInt32(0); 
-            }
+            _logger.LogDebug("UnsecuredController health endpoint called.");
+            return Ok("ok");
         }
 
-        public void GetObject()
+        [NonAction]
+        public string? ReadFile(string userInput)
         {
-            try
+            if (string.IsNullOrWhiteSpace(userInput))
             {
-                object o = null;
-                o.ToString();
+                return null;
             }
-            catch (Exception e)
+
+            var fullPath = Path.GetFullPath(Path.Combine(_allowedBasePath, userInput));
+
+            if (!IsPathWithinBasePath(fullPath, _allowedBasePath))
             {
-                Console.WriteLine(e.ToString());
+                throw new UnauthorizedAccessException("Requested file path is not allowed.");
             }
-        
+
+            if (!System.IO.File.Exists(fullPath))
+            {
+                return null;
+            }
+
+            return System.IO.File.ReadAllText(fullPath, Encoding.UTF8);
         }
 
-        private string connectionString = "";
+        private static bool IsPathWithinBasePath(string fullPath, string basePath)
+        {
+            var relativePath = Path.GetRelativePath(basePath, fullPath);
+
+            var traversesUp = relativePath == ".."
+                || relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                || relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal);
+
+            return !Path.IsPathRooted(relativePath)
+                && !traversesUp;
+        }
+
+        [NonAction]
+        public int? GetProduct(string productName)
+        {
+            if (string.IsNullOrWhiteSpace(productName))
+            {
+                throw new ArgumentException("Product name is required.", nameof(productName));
+            }
+
+            if (string.IsNullOrWhiteSpace(_connectionString))
+            {
+                throw new InvalidOperationException("Connection string is not configured.");
+            }
+
+            using SqlConnection connection = new SqlConnection(_connectionString);
+            using SqlCommand sqlCommand = new SqlCommand(
+                "SELECT TOP(1) ProductId FROM Products WHERE ProductName = @productName",
+                connection
+            )
+            {
+                CommandType = CommandType.Text,
+            };
+
+            sqlCommand.Parameters.Add("@productName", SqlDbType.NVarChar, 255).Value = productName;
+
+            connection.Open();
+
+            var result = sqlCommand.ExecuteScalar();
+            if (result is null || result == DBNull.Value)
+            {
+                return null;
+            }
+
+            return Convert.ToInt32(result);
+        }
+
+        [NonAction]
+        public string GetObject()
+        {
+            object o = new object();
+            return o.ToString() ?? string.Empty;
+        }
     }
 }
