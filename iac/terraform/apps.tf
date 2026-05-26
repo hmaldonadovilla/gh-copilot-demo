@@ -34,31 +34,64 @@ resource "null_resource" "docker_simulator" {
 }
 
 resource "null_resource" "docker_tripviewer" {
+  depends_on = [
+    azurerm_container_registry.container_registry
+  ]
   provisioner "local-exec" {
     command = "az acr build --image devopsoh/tripviewer:latest --registry ${azurerm_container_registry.container_registry.login_server} --file ../../support/tripviewer/Dockerfile ../../support/tripviewer"
   }
 }
 
 resource "null_resource" "docker_api-poi" {
+  depends_on = [
+    azurerm_container_registry.container_registry
+  ]
   provisioner "local-exec" {
     command = "az acr build --image devopsoh/api-poi:${local.apipoi_base_image_tag} --registry ${azurerm_container_registry.container_registry.login_server} --build-arg build_version=${local.apipoi_base_image_tag} --file ../../apis/poi/web/Dockerfile ../../apis/poi/web"
   }
 }
 
 resource "null_resource" "docker_api-trips" {
+  depends_on = [
+    azurerm_container_registry.container_registry
+  ]
   provisioner "local-exec" {
     command = "az acr build --image devopsoh/api-trips:${local.apitrips_base_image_tag} --registry ${azurerm_container_registry.container_registry.login_server} --build-arg build_version=${local.apitrips_base_image_tag} --file ../../apis/trips/Dockerfile ../../apis/trips"
   }
 }
 
 resource "null_resource" "docker_api-user-java" {
+  depends_on = [
+    azurerm_container_registry.container_registry
+  ]
   provisioner "local-exec" {
     command = "az acr build --image devopsoh/api-user-java:${local.apiuserjava_base_image_tag} --registry ${azurerm_container_registry.container_registry.login_server} --build-arg build_version=${local.apiuserjava_base_image_tag} --file ../../apis/user-java/Dockerfile ../../apis/user-java"
   }
 }
 
 resource "null_resource" "docker_api-userprofile" {
+  depends_on = [
+    azurerm_container_registry.container_registry
+  ]
   provisioner "local-exec" {
     command = "az acr build --image devopsoh/api-userprofile:${local.apiuserprofile_base_image_tag} --registry ${azurerm_container_registry.container_registry.login_server} --build-arg build_version=${local.apiuserprofile_base_image_tag} --file ../../apis/userprofile/Dockerfile ../../apis/userprofile"
   }
+}
+
+# Container Registry
+resource "azurerm_container_registry" "container_registry" {
+  name                = "devopsoh${uniqueSuffix}"
+  resource_group_name = azurerm_resource_group.resource_group.name
+  location            = azurerm_resource_group.resource_group.location
+  sku                 = "Basic"
+  admin_enabled       = true
+}
+
+# Azure Open AI resource
+resource "azurerm_cognitive_account" "azure_openai" {
+  name                = azureOpenAIName
+  resource_group_name = azurerm_resource_group.resource_group.name
+  location            = azurerm_resource_group.resource_group.location
+  kind                = "OpenAI"
+  sku_name            = "S0"
 }

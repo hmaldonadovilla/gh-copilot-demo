@@ -13,6 +13,7 @@ param registryPassword string
 param registryUsername string
 param apiImage string
 param viewerImage string
+param azureOpenAIName string = 'azureopenai${uniqueSuffix}'
 
 
 // Log analytics and App Insights for visibility 
@@ -40,7 +41,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// Storage Account to act as state store 
+// Storage Account to act as state store
 resource storageAccount 'Microsoft.Storage/storageAccounts@2021-06-01' = {
   name: storageAccountName
   location: location
@@ -129,3 +130,29 @@ output env array=[
   'Storage account name: ${storageAccount.name}'
   'Storage container name: ${blobContainer.name}'
 ]
+
+// Container Registry
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2021-06-01-preview' = {
+  name: registryName
+  location: location
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    adminUserEnabled: true
+  }
+}
+
+// Azure Open AI resource
+resource azureOpenAI 'Microsoft.CognitiveServices/accounts@2021-04-30' = {
+  name: azureOpenAIName
+  location: location
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    apiProperties: {
+      qnaRuntimeEndpoint: 'https://<your-endpoint>.cognitiveservices.azure.com/'
+    }
+  }
+}
